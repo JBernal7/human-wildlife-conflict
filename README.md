@@ -13,5 +13,5 @@ This public repository contains only a subset of the code used in the projects. 
 
 ## Contact
 
-If you have any questions, need more information, or would like access to the full private repository, please feel free to contact me at [jessicabernal@uma.es].
+If you have any questions, need more information, or would like access to the full private repository, please feel free to contact me at jessicabernal@uma.es.
 
