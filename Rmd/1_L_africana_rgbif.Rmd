@@ -1,0 +1,258 @@
+---
+title: "Loxodonta africana HSM"
+author: "Jessica Bernal"
+date: '2022-08-06'
+output: html_document
+---
+
+### 1. Downloading presence data from GBIF
+
+
+Before loading the data into the workspace, we can define the directory:
+
+
+```{r}
+#setwd("D:/IDAF") #We don't do this step here as it has been previously defined by the project
+getwd()
+```
+
+Loading the libraries to use,
+ 
+```{r}
+#install.packages("rgbif") #if not already installed
+library(rgbif) # 'rgbif' includes functions to search for biodiversity data in the GBIF database
+library(raster) # Reading, writing, manipulation, analysis and modeling of spatial data in 'raster' format
+library(rgdal) # Geospatial data manipulation
+library(mapview) # Interactive Viewing of Spatial Data
+library(rgeos) #Interface to Geometry Engine - Open Source ('GEOS')
+```
+
+Load shapefiles
+```{r}
+PN_shp <- readOGR("./PN_Limpopo/limites_limpopo/PN_Limpopo_30km.shp")
+mapview(PN_shp,legend=FALSE,
+         alpha.regions = 0.2, color = c("black"), lwd = 2, map.types= "Esri.WorldTopoMap")
+```
+
+
+Download of the GBIF dataset for 'Loxodonta africana' in the countries where Limpopo National Park 30 km defined buffer zone is located
+
+```{r}
+
+loxodonta_MZ <- occ_search(scientificName = "Loxodonta africana",
+                       hasCoordinate = TRUE, country = "MZ",
+                       return = "data",limit=5000)
+
+loxodonta_ZW <- occ_search(scientificName = "Loxodonta africana",
+                       hasCoordinate = TRUE, country = "ZW",
+                       return = "data",limit=5000)
+
+loxodonta_ZA <- occ_search(scientificName = "Loxodonta africana",
+                       hasCoordinate = TRUE, country = "ZA",
+                       return = "data",limit=5000)
+
+#### with limit we reduce the spatial autocorrelation
+```
+
+
+Let's see the names of the columns for the species in Mozambique
+
+
+```{r}
+names(loxodonta_MZ$data)
+```
+Selection of the columns of interest
+
+```{r}
+loxodonta_MZ<-loxodonta_MZ$data[,c(26,4,3)] #speciesKey, longitude and latitude. Log altitude not available for the dataset
+```
+
+
+We repeat the process for the records of Zimbabwe and South Africa
+
+```{r}
+names(loxodonta_ZW$data)
+```
+
+
+```{r}
+loxodonta_ZW<-loxodonta_ZW$data[,c(24,4,3)] 
+```
+
+```{r}
+names(loxodonta_ZA$data)
+```
+
+```{r}
+loxodonta_ZA<-loxodonta_ZA$data[,c(24,4,3)] 
+```
+
+We join the tables for the three countries
+
+```{r}
+
+loxodonta_MZ_ZW_ZA <- rbind.data.frame(loxodonta_MZ,loxodonta_ZW, loxodonta_ZA)
+head(loxodonta_MZ_ZW_ZA, n = 10)
+
+```
+
+
+
+Now we start working on the data, to eliminate excess and/or duplicate information:
+
+First, we remove NAs - no datas and see if our table shrinks:
+
+```{r}
+loxodonta_MZ_ZW_ZA <- na.omit(loxodonta_MZ_ZW_ZA)
+loxodonta_MZ_ZW_ZA
+```
+
+We do not observe reductions in this case
+
+Now we proceed to identify duplicate records and remove them:
+
+```{r}
+dups <- duplicated(loxodonta_MZ_ZW_ZA)
+loxodonta_MZ_ZW_ZA<-subset.data.frame(loxodonta_MZ_ZW_ZA, dups=="FALSE")
+```
+
+Our dataset have been reduced from 3206 to 3144 observations, so we can see that 62 duplications have been detected
+
+Now let's delete coordinates 0,0 
+
+```{r}
+loxodonta_MZ_ZW_ZA<-subset.data.frame(loxodonta_MZ_ZW_ZA, loxodonta_MZ_ZW_ZA$decimalLongitude!=0 | loxodonta_MZ_ZW_ZA$decimalLatitude!=0)
+```
+
+No further reduction observed
+
+It is assumed that with what we have done we already have our debugged database. Now we decide that we want to indicate the scientific name instead of the species key in the table.
+
+In some algorithms we are asked to have an additional field with a value of 1, which corresponds to the presence of the species, so we add the field La = 1 to the table:
+
+```{r}
+Presence<-loxodonta_MZ_ZW_ZA[,c(1,2,3)]
+Presence$La<-1
+summary(Presence)
+head(Presence, n = 5)
+```
+
+We rename the coordinates fields
+
+```{r}
+names(Presence)[names(Presence) == "decimalLongitude"] <- "X"
+names(Presence)[names(Presence) == "decimalLatitude"] <- "Y"
+Presence
+```
+
+
+We remove the speciesKey field
+
+```{r}
+Presence[1] <- NULL
+```
+
+
+
+We convert the dataframe (table) into a vector of points (shapefile)
+
+```{r}
+La_1 <- Presence #We assign another name to the dataframe
+coordinates(La_1)=~X+Y # We assign the names of the columns with the coordinates
+La_1
+proj4string(La_1)<- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0") # We assign the reference system
+La_1
+```
+
+We see the plot for the record and we superimpose the National Park shapefile
+```{r}
+plot(La_1)
+plot(PN_shp, col=2, add=TRUE)
+```
+
+We visualize through the interactive map
+```{r}
+# Visualizar capas
+library(mapview)
+
+mapview(La_1,legend=FALSE,
+         alpha.regions = 0.2, color = c("black"), lwd = 2, map.types= "Esri.WorldTopoMap")+ mapview(PN_shp,legend=FALSE,
+         alpha.regions = 0.2, color = c("red"), lwd = 2)
+```
+
+We cut the records by the study area. For this operation, we must be sure that the CRS are equal, 
+
+```{r}
+all.equal(crs(PN_shp), crs(La_1))
+```
+
+
+```{r}
+La_1 # Or crs(La_1)
+```
+
+```{r}
+PN_shp
+```
+
+
+```{r}
+
+La_1 <- spTransform(La_1, CRS("+proj=utm +zone=36 +south +datum=WGS84 +units=m +no_defs"))
+La_1_AE <- gIntersection(La_1,PN_shp)
+```
+
+We visualize the result,
+
+```{r}
+
+mapview(La_1_AE,legend=FALSE,
+         alpha.regions = 0.2, color = c("green"), lwd = 1, map.types= "Esri.WorldImagery")+ mapview(PN_shp,legend=FALSE,
+         alpha.regions = 0.0, color = c("red"), lwd = 2)
+```
+
+With the intersect function, we lost the field La=1 (presence), and the names of columns X and Y has changed. So we are going to correct the table: 
+
+```{r}
+La_1_AE<-as.data.frame(La_1_AE)
+La_1_AE<-La_1_AE[,c(1,2)]
+La_1_AE$La<-1
+summary(La_1_AE)
+head(Presence, n = 5)
+```
+
+We rename the coordinates fields
+
+```{r}
+names(La_1_AE)[names(La_1_AE) == "x"] <- "X"
+names(La_1_AE)[names(La_1_AE) == "y"] <- "Y"
+La_1_AE
+```
+
+Again, we convert the dataframe (table) into a vector of points (shapefile)
+
+```{r}
+La_1_AE <- La_1_AE #We assign another name to the dataframe
+coordinates(La_1_AE)=~X+Y # We assign the names of the columns with the coordinates
+La_1_AE
+proj4string(La_1_AE)<- CRS("+proj=utm +zone=36 +south +datum=WGS84 +units=m +no_defs") # We assign the reference system
+La_1_AE
+```
+
+We save the table as a shapefile,
+```{r}
+
+raster::shapefile(La_1_AE, "./Loxodonta_africana/1_presencias/1_rgbif/La_1_AE.shp", overwrite=TRUE)
+
+```
+
+
+We also save the table as csv,
+```{r}
+write.csv(La_1_AE, "./Loxodonta_africana/1_presencias/1_RGBIF/La_1_AE.csv", sep=",", row.names = F) 
+```
+
+
+We check in QGIS and remove the outliers, if any 
+
+

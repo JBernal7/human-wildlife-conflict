@@ -1,0 +1,168 @@
+---
+title: "Loxodonta africana HSM (Part II)"
+author: "Jessica Bernal"
+date: '2022-08-06'
+output: html_document
+---
+
+## 2. Filtering records
+
+Before loading the data into the workspace, we can define the directory:
+
+
+```{r}
+#setwd("D:/IDAF") #We don't do this step here as it has been previously defined by the project
+```
+
+Loading the libraries to use,
+
+```{r}
+library(raster)
+library(rgdal)
+library(spatstat) # Spatial point pattern analysis, model fitting, simulation, tests, ...
+library(spatialEco) # Spatial analysis and modeling utilities
+```
+
+
+Loading the data. We also create here the paths for the AOI and species shapefiles and create objects to bring the tables previously created.
+
+```{r}
+
+path2sp<-"./Loxodonta_africana/1_presencias/1_RGBIF/La_1_AE.csv"
+
+path2sp.shp<-"./Loxodonta_africana/1_presencias/1_rgbif/La_1_AE.shp"
+
+path2area.shp<-"./PN_Limpopo/limites_limpopo/PN_Limpopo_30km.shp"
+
+### Path to results
+path2work<-"./Loxodonta_africana/1_presencias/2_filtering_records/"
+
+### Loading data
+sp.df <- read.csv(path2sp, header=T, sep=',', fill=TRUE, check.names=TRUE, stringsAsFactors=FALSE)
+head(sp.df, n=10)
+
+sp.shp <- readOGR(path2sp.shp)
+plot(sp.shp)
+
+area.shp<-readOGR(path2area.shp)
+plot(area.shp)
+```
+
+We transform the format of the objects:
+
+```{r}
+sp.sp<-as(sp.shp,"SpatialPoints")
+plot(sp.sp)
+
+area_poly<-as(area.shp, "SpatialPolygons")
+plot(area_poly)
+```
+
+
+Plot points and study area
+
+```{r}
+plot(area_poly, col="gray80")
+points(sp.sp,add=TRUE, col="darkred")
+```
+
+
+Calculation of the Average Nearest Neighbor Index (NNI)
+
+```{r}
+nni(sp.sp, win = "extent")
+```
+
+If the average distance is less than the average of a hypothetical random distribution, the distribution of features being analyzed is considered to be clustered. In the reverse case, it would be considered that the entities are dispersed. On the other hand, the average nearest neighbor ratio is calculated as the observed average distance divided by the expected average distance (with the expected average distance based on a hypothetical random distribution with the same number of features covering the same total area). Thus, if the index (average nearest neighbor ratio) is less than 1, the pattern exhibits clustering. If the index is greater than 1, the trend is dispersion.
+
+Very high or very low (negative) z-scores, associated with very small p-values, are found in the tails of the normal distribution. When we run a feature pattern analysis tool and it produces small p-values and a very high or very low z-score, this indicates that the observed spatial pattern is unlikely to reflect the theoretical random pattern represented by your null hypothesis (CSR). What we have here is z-score of -16.2209 and a p-value of 3.588845e-59, which means we can certainly (with a confidence level above 99%) reject the null hypothesis of randomness in our sample. 
+
+
+$expected.mean.distance
+[1] 3942.017
+
+$observed.mean.distance
+[1] 2090.815
+
+
+
+Load the package spThin
+
+```{r}
+### Install package from source, then load package into workspace
+### windows systems require Rtool to compile source files: 
+### https://cran.r-project.org/bin/windows/Rtools/
+#if (!require(devtools))
+#  install.packages('devtools')
+#devtools:::install_github('mlammens/spThin')
+```
+
+Spatial thinning of species occurrence records can help address problems associated with spatial sampling biases. Ideally, thinning removes the fewest records necessary to substantially reduce the effects of sampling bias, while simultaneously retaining the greatest amount of useful information. Spatial thinning can be done manually, however, this is prohibitively time consuming for large datasets. Using a randomization approach, the ‘thin’ function in the spThin R package returns a dataset with the maximum number of records for a given thinning distance, when run for sufficient iterations (https://onlinelibrary.wiley.com/doi/10.1111/ecog.01132)
+
+
+
+
+```{r}
+### Load the library to the workspace
+#install.packages("viridis")
+#remove.packages("rlang")
+#install.packages("rlang") 
+library(spThin)
+
+```
+
+Inspect the table, 
+```{r}
+head(sp.df, n = 10)
+```
+
+At this point, we realize that the spThin package (at least the current version) use the function rdist.earth in the fields package, in which the distance between points is determined using long/lat in decimal-degree format. As we are using UTM 36S, we are going to remove the sp.df and create again the object by converting the sp.shp to a decimal degree format prior to run spThin. #### Self-note: look for better approaches to address this issue
+
+```{r}
+remove(sp.df)
+sp.df <- spTransform(sp.shp, CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+```
+
+```{r}
+sp.df <- as.data.frame(sp.df)
+sp.df
+```
+
+
+```{r}
+#rename coordinates
+names(sp.df)[names(sp.df) == "coords.x1"] <- "X"
+names(sp.df)[names(sp.df) == "coords.x2"] <- "Y"
+sp.df
+```
+
+
+Run spThin::thin on the dataset 
+
+```{r}
+thin.sp <-
+  thin( loc.data = sp.df, 
+        lat.col = "Y", long.col = "X", 
+        spec.col = "La", 
+        thin.par = 3, reps = 10, 
+        locs.thinned.list.return = TRUE, 
+        write.files = TRUE, 
+        max.files = 3, 
+        out.dir = paste(path2work, "loxodonta_thinned"),
+        write.log.file = TRUE,
+        log.file = paste(path2work, "loxodonta_thinned_log_file.txt"))
+
+summaryThin(thin.sp, show = TRUE)
+```
+
+Using the Spatial Thinning tool and using a minimum distance of 3 km and 10 replicas, we reduce these clusters to a maximum of 172 records, obtaining a frequency maximum of 4 in one of the four groups, of 171 records.
+
+
+Plot to see if we have used enough replicas to obtain the optimal number of records,
+
+```{r}
+plotThin(thin.sp)
+```
+
+

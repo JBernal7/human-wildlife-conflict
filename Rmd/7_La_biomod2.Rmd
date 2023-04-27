@@ -1,0 +1,587 @@
+---
+title: "Loxodonta africana HSM (Parte VII)"
+author: "Jessica Bernal"
+date: '2022-08-11'
+output: html_document
+---
+
+### 5. Species Distribution model with biomod2
+
+
+```{r}
+#setwd if neccesary. Here we only check it, as it has been previously defined for the project
+getwd()
+```
+
+Loading the libraries to use,
+
+```{r}
+library(raster)
+library(dismo)
+#install.packages("rgeos")
+library(rgeos) # Geometric operations with geographic information
+#install.packages("biomod2")
+library(biomod2) # Species distribution and assembly models
+library(ggplot2)
+#install.packages("RColorBrewer")
+library(RColorBrewer) # Create nice color palettes especially for thematic maps
+library(dplyr)
+```
+
+
+Loading the data and creating the paths to use. 
+
+```{r}
+# Load species data
+DataSpecies <- read.csv2('./Loxodonta_africana/1_presencias/2_filtering_records/thinned_data_thin1.csv',sep=',', dec = ".")
+
+
+### Explore the data
+head(DataSpecies, n = 5)
+
+```
+```{r}
+### Plot
+qplot(x=X,y=Y,data=DataSpecies)
+```
+Convert the data to a spatial object
+
+```{r}
+
+library(sp)
+spPointData <- SpatialPoints(DataSpecies[,c("X","Y")], 
+                             proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+
+```
+
+
+
+Name of the study species
+```{r}
+myRespName <- 'La'
+```
+
+
+
+Presence/absence data for Loxodonta africana
+
+```{r}
+myResp <- spPointData
+myResp
+```
+
+
+Environmental variables (predictors)
+
+```{r}
+myExpl<-stack(list.files(path="./Loxodonta_africana/4_variables_definitivas/var_def",pattern='asc',full.names=TRUE))
+crs(myExpl) <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+plot(myExpl)
+myExpl
+```
+
+
+Set the output directory of the results
+
+```{r}
+path2results<-"./Loxodonta_africana/5_biomod2"
+```
+
+
+
+Number of training points
+
+```{r}
+Npresences <- length(myResp)
+```
+
+
+Data format
+
+We configure biomod for calibration
+
+```{r}
+# Number of PA sets (pseudoabsences) = 10
+# Number of PA per set = Number of presences
+# PA selection strategy = 'random' 
+
+myBiomodData <- BIOMOD_FormatingData(resp.var = myResp,
+                                     expl.var = myExpl,
+                                     resp.name = myRespName,
+                                     eval.resp.var = NULL,
+                                     eval.expl.var = NULL,
+                                     eval.resp.xy = NULL,
+                                     PA.nb.rep = 10, 
+                                     PA.nb.absences = Npresences, 
+                                     PA.strategy = 'random',
+                                     PA.dist.min = 0,
+                                     PA.dist.max = NULL,
+                                     PA.sre.quant = 0.025,
+                                     PA.table = NULL,
+                                     na.rm = TRUE)
+```
+Print data format
+```{r}
+myBiomodData
+```
+
+Plot data format
+```{r}
+plot(myBiomodData)
+
+```
+
+
+Calibration options
+
+```{r}
+# Consulting help
+?BIOMOD_ModelingOptions
+```
+
+
+We choose a GAM (Generalized Additive Model)
+
+```{r}
+#We change k=4 to avoid too complex models
+myBiomodOption <- BIOMOD_ModelingOptions(GAM = list(k = 4),
+                                         MAXENT.Phillips = list(path_to_maxent.jar="./maxent/maxent.jar"))
+print(myBiomodOption)
+```
+
+### Calibration of models
+
+Number of evaluation rounds = 20
+Data train/test percentage = (depends on the number of occurrences of the study species)
+Prevalence = 0.5
+Importance of variables - Number of permutations = 3
+Metrics for evaluation = ROC, TSS
+Full models = TRUE
+
+
+```{r}
+# Consulting help
+?BIOMOD_Modeling
+```
+
+
+```{r}
+myBiomodModelOut <- BIOMOD_Modeling( 
+  myBiomodData, # The data includes the records of the species, the name of the species and the variables
+  models = c('GLM', 'GBM','GAM','CTA','ANN',
+             'SRE','FDA','MARS','RF','MAXENT.Phillips.2'), # Methods (algorithms)
+  models.options = myBiomodOption,
+  NbRunEval=20, 
+  DataSplit=80, # % of data used for training
+  Yweights=NULL,#
+  Prevalence=0.5, # Weighted sum of presences is equal to the weighted sum of absences
+  VarImport=1,
+  models.eval.meth = c('TSS','ROC'),
+  BinRoc=TRUE, # The results will also be output as binary values using the Roc curve threshold for all models
+  BinTSS=TRUE, # Results will also be output as binary values using the TSS threshold for all models
+  FiltRoc=TRUE, # Results will also be output as filtered values using the Roc curve threshold for all models
+  FiltTSS=TRUE, # Results will also be output as filtered values using the TSS threshold for all models
+  SaveObj = TRUE, # Keep all the results and outputs on the hard drive BEWARE THAT THE COMPUTER PETA
+  do.full.models = TRUE, # Models calibrated and evaluated with the entire dataset
+  modeling.id = "allmodels") # ID (= name) of the modeling procedure
+```
+
+
+
+Modeling summary
+
+```{r}
+myBiomodModelOut 
+```
+
+
+
+### Models evaluation
+
+```{r}
+options(max.print=999999) # Give more RAM
+```
+
+
+Obtain the evaluation values of the models
+```{r}
+myBiomodModelEval <- get_evaluations(myBiomodModelOut)
+#myBiomodModelEval
+```
+
+
+```{r}
+xx <-get_evaluations(myBiomodModelOut, as.data.frame=T)
+head(xx, n = 5)
+
+```
+
+
+Print the dimnames of this object
+```{r}
+dimnames(myBiomodModelEval)
+```
+
+
+
+Print ROC scores of all selected models. Models which ROC scores are above 0.7 are considered good, while >0.9 very good.
+
+```{r}
+print(myBiomodModelEval["ROC","Testing.data",,,])
+```
+
+
+
+Print TSS scores for all selected models
+```{r}
+print(myBiomodModelEval["TSS","Testing.data",,,])
+```
+
+
+
+Obtaining boxplot stats of ROC
+```{r}
+print(fivenum(as.numeric(myBiomodModelEval["ROC","Testing.data",,,])))
+```
+
+
+
+Obtaining boxplot stats de TSS
+```{r}
+print(fivenum(as.numeric(myBiomodModelEval["TSS","Testing.data",,,])))
+```
+
+
+Printing variables importance
+
+```{r}
+get_variables_importance(myBiomodModelOut)
+
+var.imp.mod.out <- get_variables_importance(myBiomodModelOut, as.data.frame=T)
+head(var.imp.mod.out, n = 5)
+```
+
+ 
+Save variables importance
+
+```{r}
+capture.output(get_variables_importance(myBiomodModelOut),
+               file=file.path(path2results, 
+                              paste(myRespName,"_variables_importance.csv", sep=",")))
+```
+
+
+Save evaluation metrics
+```{r}
+
+evalDF.ROC <- as.data.frame(myBiomodModelEval["ROC","Testing.data",,,])
+evalDF.TSS <- as.data.frame(myBiomodModelEval["TSS","Testing.data",,,])
+
+write.csv(evalDF.ROC, file = paste(getwd(),"/",path2results,"/",myRespName,"_evalDF_ROC.csv",sep=""))
+write.csv(evalDF.TSS, file = paste(getwd(),"/",path2results,"/",myRespName,"_evalDF_TSS.csv",sep=""))
+
+```
+
+
+### Ensemble modeling 
+
+```{r}
+# Assemble all partial models
+# We use the "top" models at 5%
+# We use ROC as the threshold metric
+# Ensemble methods are: mean, median, and weighted mean
+
+quantileThresh <- quantile(evalDF.ROC, probs=0.95, na.rm=TRUE) ##TOP 5
+
+myBiomodEM <- BIOMOD_EnsembleModeling( 
+  modeling.output = myBiomodModelOut, # Model results
+  chosen.models = 'all', # Models to include when assembling
+  em.by='all', # Flag defining how the models will be combined to build the ensemble models
+  eval.metric = c('ROC'), # Evaluation metric used to build the ensemble models
+  eval.metric.quality.threshold = quantileThresh, # It could be 0.7 IE PUT: AUC>0.7 BE CAREFUL BECAUSE IT IS NOT BETTER BY TAKING THE TOP TOPS, DEPENDING ON THE DATA WE CAN LOSE INFORMATION NECESSARY FOR THE CORRECT INTERPRETATION
+  prob.mean = TRUE, # Estimate mean probabilities through predictions
+  prob.cv = FALSE, # Coefficient of variation
+  prob.ci = FALSE, # Confidence intervals of the prob. half
+  prob.ci.alpha = 0.05, # Level of significance to estimate the confidence interval. Default = 0.05
+  prob.median = TRUE, # Estimate the median
+  prob.mean.weight = TRUE, # Estimate the weighted mean of the probabilities
+  prob.mean.weight.decay = 'proportional' ) # Define the relative importance of the weights
+```
+
+
+```{r}
+
+### Print summary                     
+myBiomodEM
+```
+
+
+
+Get Evaluations for Ensemble Models
+
+```{r}
+emEvalDF <- as.data.frame(get_evaluations(myBiomodEM))
+head(emEvalDF, n = 2)
+```
+
+```{r}
+write.csv(emEvalDF, file = paste(getwd(),"/",path2results,"/",myRespName,"_EnsMod_evalDF_AllMetrics.csv",sep="")) ##GET THE CSV TEXT TO TABLE TO PRESENT THE MODEL, A BOXPLOT CAN BE A LOT
+```
+
+
+
+### Projection of "current" models to the geographic space
+
+```{r}
+### Projection over the study area under current conditions
+myBiomodProj <- BIOMOD_Projection(
+   modeling.output = myBiomodModelOut, # Model outputs
+   new.env = myExpl, # Environmental Variables
+   proj.name = 'current', # Name of projections
+   #selected.models = 'all', # models to be projected
+   selected.models = get_kept_models(myBiomodEM, model = 1), ## Models considered in the assembly and projection - Change according to criteria - 1 IS THE MEDIAN
+   compress = 'gzip',
+   output.format = '.grd', # Format of GIS files (also *.img)
+   do.stack=TRUE)
+```
+
+Summary of created object
+
+```{r}
+myBiomodProj
+```
+
+```{r}
+# Files created on the hard drive
+list.files("./5_biomod2/La/proj_current")
+```
+
+
+```{r}
+mod_projPres <- get_predictions(myBiomodProj)
+presentResult <- calc(mod_projPres,fun = median) # Choose any descriptive statistics you want
+
+plot(presentResult)
+```
+
+```{r}
+writeRaster(presentResult, filename = "La_Present", format = "GTiff", overwrite = T) # THIS GIVES US OUR FIRST MAP OF ALL THE INDIVIDUAL MODELS AVERAGED TO THE MEDIAN, BUT WE CAN CALCULATE VARIABILITY THROUGH THE DEVIATION, DEPENDS ON WHAT WE WANT IT TO INFORM US
+```
+
+
+
+
+### Projection of ensemble models
+
+```{r}
+myBiomodEF <- BIOMOD_EnsembleForecasting( 
+  EM.output = myBiomodEM,
+  projection.output = myBiomodProj,
+  binary.meth = c('ROC', 'TSS'),
+  filtered.meth = c('ROC', 'TSS'),
+  output.format = '.grd')
+```
+
+
+```{r}
+### Print summary
+myBiomodEF
+```
+
+
+```{r}
+plot(myBiomodEF)
+```
+
+
+```{r}
+# Files created in hard drive
+list.files("./5_biomod2/La/proj_current")
+```
+
+```{r}
+mod_projPresEnsemble <- get_predictions(myBiomodEF);
+presentEnsembleResult <- mod_projPresEnsemble[[2]] # This is the median of the set of models
+```
+
+```{r}
+plot(presentEnsembleResult)
+```
+
+
+```{r}
+writeRaster(presentEnsembleResult, filename = "La_PresentEnsemble", format = "GTiff", overwrite = T)
+```
+
+
+
+
+### Models evaluation 
+
+```{r}
+
+### Evaluation chart by model
+gg1 <- models_scores_graph( myBiomodModelOut,
+                            by = 'models',
+                            metrics = c('ROC','TSS') )
+```
+
+We see the performance of each model according to the metrics used (e.g. if RF calibrated models are better than SRE)
+
+
+
+### Contribution of variables to models
+
+```{r}
+### Load models (in this case RF and GAM)
+RF.mod <- BIOMOD_LoadModels(myBiomodModelOut,models='RF')
+GAM.mod <- BIOMOD_LoadModels(myBiomodModelOut,models='GAM')
+
+### Get importance of variables in this model
+RF.vi <- variables_importance(get(RF.mod[1]), getModelsInputData(myBiomodModelOut,'expl.var'), nb_rand=1)
+GAM.vi <- variables_importance(get(GAM.mod[1]), getModelsInputData(myBiomodModelOut,'expl.var'), nb_rand=1)
+
+### Check the results
+RF.vi$mat
+GAM.vi$mat
+```
+
+
+```{r}
+### Convert this objects to tables = data.frame
+contributions_RF <- as.data.frame(RF.vi$mat)
+contributions_GAM <- as.data.frame(GAM.vi$mat)
+```
+
+
+```{r}
+### Get bar graph for RF
+barplot(height = t(contributions_RF),
+        beside = TRUE,
+        horiz = TRUE,
+        xlab = "Variable Importance RF",
+        legend = c("Random Forest"))
+```
+
+```{r}
+### Get bar graph for GAM
+barplot(height = t(contributions_GAM),
+        beside = TRUE,
+        horiz = TRUE,
+        xlab = "Variable Importance GAM",
+        legend = c("Generalized Additive Model"))
+```
+
+### Plot of response curves
+
+```{r}
+### Load the models for which we want to extract the predicted response curves - in our case from the ensemble models
+myModel <- BIOMOD_LoadModels(myBiomodEM, models='mergedData')
+
+```
+
+
+```{r}
+### Plot 2D
+myRespPlot2D.La <- response.plot2(models = myModel[1],
+                                  Data = get_formal_data(myBiomodModelOut,'expl.var'), 
+                                  show.variables= get_formal_data(myBiomodModelOut,'expl.var.names')[c(1,2,3,4,5,6,7)], # We specify the variables we want to display
+                                  do.bivariate = FALSE,
+                                  col = c("red"),
+                                  legend = TRUE,
+                                  data_species = get_formal_data(myBiomodModelOut,'resp.var'))
+```
+
+
+```{r}
+# plot 3D response plots
+## Here just for one model
+
+myRespPlot3D <- response.plot2(models  = myModel[1],
+                               Data = get_formal_data(myBiomodModelOut,'expl.var'), 
+                               show.variables = get_formal_data(myBiomodModelOut,'expl.var.names')[c(1,2,3,4,5,6)],
+                               do.bivariate = TRUE,
+                               fixed.var.metric = 'median',
+                               data_species = get_formal_data(myBiomodModelOut,'resp.var'),
+                               legend = F,
+                               display_title = FALSE)
+```
+
+
+```{r}
+# Click on Zoom to see the enlarged plot
+#dev.off() #Delete the plots
+
+```
+
+
+
+
+
+### Obtaining Predictive Habitat Maps
+
+```{r}
+library(raster)
+library(rasterVis)
+```
+
+
+Plot of probability of presence of the species
+
+```{r}
+# Load the corresponding raster
+La_proj_current <- raster("./La/proj_current/proj_current_La.grd")
+
+# Plot
+plot(La_proj_current)
+
+# Set color palette
+blues <- brewer.pal('Blues', n = 5)
+reds <- rev(brewer.pal('Reds', n = 5))
+
+# Combinacion de colores
+myTheme <- rasterTheme(region = c(blues, reds))
+
+# Plot
+levelplot(La_proj_current, par.settings = BuRdTheme, margin = FALSE, main = expression("Probability of presence | La"))
+```
+
+
+
+### Predicted habitat plot 
+
+PRESENCE 1 ABSENCE 0 NECESSARY CUT-OFF THRESHOLD POINT DEPENDS ON TECHNIQUE SO AS NOT TO LOSE PREDICTIVE CAPACITY
+
+```{r}
+# Load the corresponding raster
+La_binary <- raster("./La/proj_current/proj_current_La_ensemble_TSSbin.grd")
+
+#plot
+plot(La_binary)
+
+# Alphabetical order
+La.bn <- as.factor(La_binary)
+
+# Add a column with the new attribute
+rat <- levels(La.bn)[[1]]
+rat[["La.bn"]] <- c("Unsuitable", "Suitable")
+levels(La.bn) <- rat
+```
+
+
+```{r}
+#plot
+La.hab <- levelplot(La.bn, col.regions=rev(terrain.colors(2)), xlab="", ylab="", main = expression("Habitat Suitability Index | La"))
+
+plot(La.hab)
+```
+
+```{r}
+
+# save as geotiff
+if (require(rgdal)) {
+   La <- writeRaster(La_binary, filename="./La/proj_current/proj_current_La_ensemble_TSSbin.tif", format="GTiff", overwrite=TRUE)
+}
+```
+
+

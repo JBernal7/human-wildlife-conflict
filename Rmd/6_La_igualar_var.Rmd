@@ -1,0 +1,208 @@
+---
+title: "Loxodonta africana (Parte VI)"
+author: "Jessica Bernal"
+date: '2022-08-08'
+output: html_document
+---
+### 4. Multicollinearity analysis and variable selection (II)
+
+
+```{r}
+#setwd if neccesary. Here we only check it, as it has been previously defined for the project
+getwd()
+```
+
+
+Loading the libraries to use,
+
+```{r}
+library(raster)
+library(rgdal)
+library(spatstat)
+library(spatialEco)
+library(usdm) # Uncertainty analysis for species distribution models
+library(ggplot2) # Powerful graphics language for creating elegant and complex plots
+```
+
+
+Loading the data and creating the paths to use. 
+
+```{r}
+### Path to rasters
+path2layers<-"./Loxodonta_africana/4_variables_definitivas/bioclimaticas"
+
+### Path to results
+path2work1<-"./Loxodonta_africana/4_variables_definitivas/var_def/"
+
+### Load the bioclimatic and altitude variables
+VAR_PN <- stack(list.files(path=path2layers,pattern='asc',full.names=TRUE))
+
+plot(VAR_PN)
+```
+
+
+```{r}
+### Load variables separately
+VAR_alt <- raster("./Loxodonta_africana/4_variables_definitivas/bioclimaticas/alt.asc")
+plot(VAR_alt)
+```
+
+
+```{r}
+VAR_hfp <- raster("./Loxodonta_africana/4_variables_definitivas/otras/hfp_PN.asc")
+plot(VAR_hfp)
+```
+
+
+```{r}
+VAR_ndwi_ws <- raster("./Vegetation_Index/variables_seleccionadas/NDWI_WS.asc")
+plot(VAR_ndwi_ws)
+```
+
+
+```{r}
+VAR_ndwi_ds <- raster("./Vegetation_Index/variables_seleccionadas/NDWI_DS.asc")
+plot(VAR_ndwi_ds)
+```
+
+
+
+```{r}
+extent(VAR_alt)
+extent(VAR_hfp)
+extent(VAR_ndwi_ws)
+extent(VAR_ndwi_ds)
+```
+
+```{r}
+xres(VAR_alt)
+xres(VAR_hfp)
+xres(VAR_ndwi_ws)
+xres(VAR_ndwi_ds)
+```
+
+```{r}
+crs(VAR_alt) 
+crs(VAR_hfp) 
+crs(VAR_ndwi_ws) 
+crs(VAR_ndwi_ds)
+```
+
+
+```{r}
+
+# Assign coordinate system
+crs(VAR_alt) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+crs(VAR_hfp) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+crs(VAR_ndwi_ws) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+crs(VAR_ndwi_ds) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+```
+
+```{r}
+crs(VAR_alt) 
+crs(VAR_hfp) 
+crs(VAR_ndwi_ws) 
+crs(VAR_ndwi_ds)
+```
+
+We equate the length and resolution of the variables,
+
+```{r}
+dim(VAR_alt)
+dim(VAR_hfp)
+dim(VAR_ndwi_ws)
+dim(VAR_ndwi_ds)
+```
+
+```{r}
+### We match the rasters
+hfp_new<-resample(VAR_hfp,VAR_alt)
+dim(hfp_new)<-c(275,230)
+plot(hfp_new)
+```
+
+
+```{r}
+ndwi_ws_new<-resample(VAR_ndwi_ws,VAR_alt)
+dim(ndwi_ws_new)<-c(275,230)
+plot(ndwi_ws_new)
+```
+
+```{r}
+ndwi_ds_new<-resample(VAR_ndwi_ds,VAR_alt)
+dim(ndwi_ds_new)<-c(275,230)
+plot(ndwi_ds_new)
+```
+
+```{r}
+
+extent(VAR_alt)
+extent(hfp_new)
+extent(ndwi_ws_new)
+extent(ndwi_ds_new)
+```
+
+```{r}
+xres(VAR_alt)
+xres(hfp_new)
+xres(ndwi_ws_new)
+xres(ndwi_ds_new)
+```
+
+```{r}
+### Load variables
+VAR_PN <- stack(c(VAR_alt, hfp_new, ndwi_ws_new, ndwi_ds_new))
+plot(VAR_PN)
+```
+
+
+```{r}
+### Save variables
+writeRaster(x=VAR_PN, path2work1, names(VAR_PN), bylayer=TRUE, format="ascii", overwrite=TRUE)
+```
+
+
+```{r}
+
+### Load definitive variables
+VAR_PN_DEF <- stack(list.files(path=path2work1,pattern='asc',full.names=TRUE))
+names(VAR_PN_DEF)
+plot(VAR_PN_DEF)
+```
+
+
+
+Calculate VIF based on the functions vifcor and vifstep
+
+```{r}
+v1 <- vifcor(VAR_PN_DEF, th=0.8)
+v1
+```
+
+
+
+Calculate correlations
+
+```{r}
+### Transform the rasters into a table
+var.df<-as.data.frame(VAR_PN_DEF)
+
+### Remove null values
+var.df<-na.omit(var.df)
+
+### Calculate the Spearman correlation coefficient between variables
+var.cor<-cor(var.df, method = c("spearman"))
+
+### Explore the correlation results
+print(var.cor)
+```
+
+
+
+Correlation plot
+
+```{r}
+library(corrplot) # Visualizacion grafica de una matriz de correlacion, intervalo de confianza
+corrplot_number<-corrplot(var.cor, type = "upper", method = "number")
+```
+

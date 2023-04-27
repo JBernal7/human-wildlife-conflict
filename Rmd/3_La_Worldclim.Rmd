@@ -1,0 +1,73 @@
+---
+title: "Loxodonta africana HSM (Part III)"
+author: "Jessica Bernal"
+date: '2022-08-07'
+output: html_document
+---
+
+### 3. Downloading the bioclimatic variables from Worldclim 
+
+
+Loading the libraries to use,
+
+```{r}
+library(raster)
+library(terra)
+library(geodata)
+```
+
+
+We download raster data from Worldclim, where the raster values are calculated from a number of major climate databases, while elevational data comes from the SRTM database (NASA). Worldclim is a database of global interpolated climate data available at 4 different spatial resolutions, from 30 seconds (~1 km2) to 10 minutes (~340 km2). It has 19 bioclimatic variables that we can look at for the current climate. http://www.worldclim.org/bioclim
+
+If using the raster::getData function, you must provide the name='worldclim' and also the arguments var, and a resolution res. Valid variables names are 'tmin', 'tmax', 'prec' and 'bio'. Valid resolutions are 0.5, 2.5, 5, and 10 (minutes of a degree). In the case of res=0.5, you must also provide a lon and lat argument for a tile; for the lower resolutions global data will be downloaded. In all cases there are 12 (monthly) files for each variable except for 'bio' which contains 19 files. 
+
+```{r}
+
+# clim1km <- getData("worldclim", var="bio", res=0.5, lon=31, lat=-23)
+
+```
+
+Alternatively, we can download the WorldClim data with the geodata package (more info: https://rdrr.io/cran/geodata/man/geodata-package.html)
+
+
+```{r}
+
+clim1km <- worldclim_tile(var="bio", res=0.5, lon=31, lat=-23, path= "D:/IDAF/Loxodonta_africana/2_WorldClim_R/")
+
+```
+
+```{r}
+plot(clim1km)
+```
+
+
+We explore the resolution and extension of the variables
+
+```{r}
+ext(clim1km)
+xres(clim1km) 
+yres(clim1km)
+```
+
+
+```{r}
+alt <- worldclim_tile(var="elev", res=0.5, lon=31, lat=-23, path= "D:/IDAF/Loxodonta_africana/2_WorldClim_R/")
+
+plot(alt)
+```
+
+We explore the resolution and extension of the variables
+
+```{r}
+ext(alt)
+xres(alt) 
+yres(alt)
+```
+
+
+We match the resolution and extension of the variables, if necessary (using crop, resample...)
+
+Save the files of the predictor variables if the package getData has been used. Here, we continue with the predictors stored as layers (probably it will appear in the environment as SpatRaster formal class, which is ok for us). 
+
+
+More info (Terra.pdf): https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwiPzZXAk7X5AhUQ3hoKHS1JDgoQFnoECAoQAQ&url=https%3A%2F%2Fcran.r-project.org%2Fweb%2Fpackages%2Fterra%2Fterra.pdf&usg=AOvVaw0v-ANNNSqtJw91olfM8pBu 

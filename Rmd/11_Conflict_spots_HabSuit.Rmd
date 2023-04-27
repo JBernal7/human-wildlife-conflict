@@ -1,0 +1,153 @@
+---
+title: "Conflict Maps (IV) - Habitat Suitability (Current)"
+author: "Jessica Bernal"
+date: "2022-08-18"
+output: html_document
+---
+
+### 6. Mapping Conflict zones. Preparing variables.
+
+```{r}
+#setwd if neccesary. Here we only check it, as it has been previously defined for the project
+getwd()
+```
+
+Loading the libraries to use,
+
+```{r}
+library(raster)
+library(rgdal)
+library(spatstat)
+library(spatialEco)
+library(usdm) 
+library(ggplot2) 
+```
+
+
+Loading the data and creating the paths to use.
+
+
+
+```{r}
+### Loading conflict species rasters (these rasters have been previously reclassified) 
+La <- raster("./Proyecto/Results_hab/Indices_hab/La_Ensemble_TSS.tif")
+Ha <- raster("./Proyecto/Results_hab/Indices_hab/Ha_Ensemble_TSS.tif")
+Sc <- raster("./Proyecto/Results_hab/Indices_hab/Sc_Ensemble_TSS.tif")
+All_Species <- raster("./Proyecto/Results_hab/Indices_hab/LaHaSc_TSS.tif")
+
+### Definitive variables
+path2layers<-"./Proyecto/Results/Var_Def"
+
+### Results path 
+path2work1<-"./Proyecto/Results_hab/"
+
+### Loading definitive variables
+VAR_PN_DEF <- stack(list.files(path=path2layers,pattern='',full.names=TRUE))
+names(VAR_PN_DEF)
+```
+
+
+```{r}
+plot(La)
+```
+```{r}
+plot(Ha)
+```
+```{r}
+plot(Sc)
+```
+
+```{r}
+plot(All_Species)
+```
+
+```{r}
+plot(VAR_PN_DEF)
+```
+
+
+```{r}
+VAR_DEF_Sum <- calc(VAR_PN_DEF, fun=sum, filename='', na.rm=TRUE, forcefun=FALSE, forceapply=FALSE)
+plot(VAR_DEF_Sum)
+```
+
+
+```{r}
+VAR_DEF_Sum
+```
+Crop rasters with AOI
+
+```{r}
+### AOI path
+PN_shp <- readOGR("./PN_Limpopo/limites_limpopo/PN_Limpopo_30km.shp")
+
+### crs transform
+PN_shp <- spTransform(PN_shp, CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+```
+
+```{r}
+
+## Crop to AOI
+
+VAR_DEF_Sum <- crop (VAR_DEF_Sum, extent(PN_shp))
+VAR_DEF_Sum <- mask(VAR_DEF_Sum, PN_shp)
+
+## Check that it worked
+plot(VAR_DEF_Sum)
+plot(PN_shp, add=TRUE, lwd=2)
+
+```
+
+```{r}
+VAR_DEF_Sum
+```
+```{r}
+#Save to drive
+
+writeRaster(x=VAR_DEF_Sum, filename = "./Proyecto/Results_hab/VAR_DEF_Sum.tif", format="GTiff", overwrite=TRUE)
+
+writeRaster(x=VAR_DEF_Sum, filename = "./Proyecto/Results_hab/VAR_DEF_Sum.tif", format="ascii", overwrite=TRUE)
+```
+
+
+
+
+Ahora vamos a calcular los 4 escenarios para la elaboración de los mapas de calor finales. En este caso, vamos a volver a optar por la función suma: 
+
+
+
+
+```{r}
+Conflict_Ha <- overlay (VAR_DEF_Sum, Ha, fun=function(x,y){x+y}, filename='Conflict_Ha_TSS.tif', na.rm=TRUE, forcefun=FALSE, forceapply=FALSE, overwrite=TRUE)
+
+plot(Conflict_Ha)
+```
+
+```{r}
+Conflict_La <- overlay (VAR_DEF_Sum, La, fun=function(x,y){x+y}, filename='Conflict_La_TSS.tif', na.rm=TRUE, forcefun=FALSE, forceapply=FALSE, overwrite=TRUE)
+
+plot(Conflict_La)
+```
+
+
+```{r}
+Conflict_Sc <- overlay (VAR_DEF_Sum, Sc, fun=function(x,y){x+y}, filename='Conflict_Sc_TSS.tif', na.rm=TRUE, forcefun=FALSE, forceapply=FALSE, overwrite=TRUE)
+
+plot(Conflict_Sc)
+```
+```{r}
+
+Conflict_All <- overlay (VAR_DEF_Sum, All_Species, fun=function(x,y){x+y}, filename='Conflict_All_TSS.tif', na.rm=TRUE, forcefun=FALSE, forceapply=FALSE, overwrite=TRUE)
+
+plot(Conflict_All)
+```
+
+
+
+
+
+
+
+
+
+

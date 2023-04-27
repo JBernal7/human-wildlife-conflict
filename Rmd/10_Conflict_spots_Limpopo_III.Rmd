@@ -1,0 +1,167 @@
+---
+title: "Conflict Maps (III) - All species - Probabilty of Presence (Current)"
+author: "Jessica Bernal"
+date: "2022-08-18"
+output: html_document
+---
+
+### 6. Mapping Conflict zones. Geostatistical analysis - detection of hot spots.
+
+```{r}
+#setwd if neccesary. Here we only check it, as it has been previously defined for the project
+getwd()
+```
+
+
+For this analysis, the statistical index Getis-Ord Gi* (Getis & Ord, 1992) is used. This index evaluates the spatial aggregation of data through the comparison of local (a site and its surroundings) and global (for the entire study area) averages. This comparison is based on the calculation of the standardized value z or z-score. The z (standard deviations) and p values indicate whether the features aggregate statistically over a given distance.
+
+```{r}
+library(raster)
+library (rgdal)
+library(maptools)
+#install.packages("spdep")
+library(spdep) 
+```
+
+Loading data 
+
+```{r}
+
+def <- raster("./Proyecto/Conflict_All.tif")
+
+plot(def)
+```
+```{r}
+def
+```
+
+
+Let's assign the final crs project
+
+
+```{r}
+### AOI path
+PN_shp <- readOGR("./PN_Limpopo/limites_limpopo/PN_Limpopo_30km.shp")
+PN_shp
+```
+
+```{r}
+# Transform CRS if necessary
+def <- projectRaster(def, crs = "+proj=utm +zone=36 +south +datum=WGS84 +units=m +no_defs")
+
+```
+
+
+
+```{r}
+dim(def)
+```
+
+```{r}
+res(def)
+```
+
+Transform the raster into points,
+
+
+```{r}
+def_pts <- rasterToPoints(def)
+plot(def_pts)
+head(def_pts,2)
+```
+
+
+
+```{r}
+summary(def_pts)
+
+```
+
+
+
+```{r}
+class(def_pts)
+```
+
+```{r}
+# Search distance from "local" neighbors
+dist_G <- 5000
+# Generate matrix with 2 columns for coordinates (x and y)
+xy <- as.matrix(def_pts[,1:2])
+head(xy,3)
+```
+
+```{r}
+tasa <- def_pts[,3]
+```
+
+
+The function "Neighbourhood contiguity by distance" identifies neighbours of region points by Euclidean distance between lower (greater than or equal to) and upper (less than or equal to) bounds, or with longlat = TRUE, by Great Circle distance in kilometers.
+
+
+```{r}
+# Identifies neighbors of each point in distances from 0 to dist_G
+vecino <-dnearneigh(xy, 0, dist_G)
+print(vecino)
+```
+
+
+
+Using the nb2listw() function, the weights assigned to the neighbors of each point are calculated. This function starts from a binary neighbours list, in which regions are either listed as neighbours or are absent (thus not in the set of neighbours for some definition), the function adds a weights list with values given by the coding scheme style chosen. B is the basic binary coding, W is row standardised (sums over all links to n), C is globally standardised (sums over all links to n), U is equal to C divided by the number of neighbours (sums over all links to unity), while S is the variance-stabilizing coding scheme proposed by Tiefelsdorf et al. 1999, p. 167-168 (sums over all links to n). In this case, the style="B" option was used, the weight is therefore binary. 
+
+Finally, the value of z is calculated for each point with the localG() function.
+
+```{r}
+library(spdep)
+#memory.limit(36000) #if necessary
+pesos <- nb2listw(vecino, style="B")
+Getis<- localG(tasa, pesos)
+class(Getis)
+```
+
+
+The local spatial statistic G is calculated for each zone based on the spatial weights object used. The value returned is a Z-value, and may be used as a diagnostic tool. High positive values indicate the posibility of a local cluster of high values of the variable being analysed, very low relative values a similar cluster of low values. For inference, a Bonferroni-type test is suggested in the references, where tables of critical values may be found (R Documentation).
+
+```{r}
+head(Getis)
+```
+
+
+```{r}
+z <- as.numeric(Getis)
+```
+
+
+
+
+The result is a vector containing the z values of each point. In order to visualize the spatial distribution of z, we have to create a spatial object. First we create a Dataframe table by putting together the coordinates and the z values. 
+
+```{r}
+# Generate a table with x, y and z
+spz <- as.data.frame(cbind(xy,z))
+head(spz, 3)
+```
+This table is then transformed into a SpatialPointsDataFrame and RasterLayer object with the raster package. 
+
+```{r}
+# Create an object "spatial points data frame"
+coordinates(spz) <- ~ x + y
+# Convert to SpatialPixelsDataFrame
+gridded(spz) <- TRUE
+# Convert to raster
+rasterz <- raster(spz)
+plot(rasterz,axes=F,main = expression("Conflict | All Species | Probability of Presence"))
+```
+
+
+The final map shows us, in green, the areas where the spatial aggregation of conflict patches exceeds the variability that could be attributed to random effects. This region corresponds to the highly conflictive zones, which have a much higher probability of encountering with the species than the study area as a whole.
+
+
+```{r}
+writeRaster(x=rasterz, filename = "./Proyecto/Results/Hotspot_Conflict_All_Prob.tif", format="GTiff", overwrite=TRUE)
+```
+
+Note: A similar analysis is performed for all scenarios.
+
+
+

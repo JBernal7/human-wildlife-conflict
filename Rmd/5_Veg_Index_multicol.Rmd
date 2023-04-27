@@ -1,0 +1,328 @@
+---
+title: "PN Limpopo Vegetation Index"
+author: "Jessica Bernal"
+date: '2022-08-08'
+output: html_document
+---
+### 4. Multicollinearity analysis and variable selection 
+
+```{r}
+#setwd if neccesary. Here we only check it, as it has been previously defined for the project
+getwd()
+```
+
+
+Loading the libraries to use,
+
+```{r}
+library(raster)
+library(rgdal)
+library(spatstat)
+library(spatialEco)
+library(usdm) # Uncertainty analysis for species distribution models especies
+library(ggplot2) # Powerful graphics language for creating elegant and complex plots
+library(maptools)
+```
+
+
+Loading the data and creating the paths to use. 
+
+
+```{r}
+### Rasters path
+path2layers<-"./Vegetation_Index"
+
+### Results path 
+path2work1<-"./Vegetation_Index/test_multicolinealidad/"
+
+### Path for selected variables
+path2work2<-"./Vegetation_Index/test_multicolinealidad/variables_seleccionadas/"
+
+### Loading variables
+VAR_PN <- stack(list.files(path=path2layers,pattern='tif',full.names=TRUE))
+names(VAR_PN)
+```
+
+```{r}
+crs(VAR_PN)
+```
+
+```{r}
+#VAR_PN <- projectRaster(VAR_PN, crs="+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+```
+
+```{r}
+#crs(VAR_PN)
+```
+
+Crop rasters with AOI
+
+```{r}
+### AOI path
+PN_shp <- readOGR("D:/IDAF/PN_Limpopo/limites_limpopo/PN_Limpopo_30km.shp")
+
+### crs transform
+PN_shp <- spTransform(PN_shp, CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+#PN_shp <- spTransform(PN_shp, CRS("+proj=longlat +ellps=clrk66 +no_defs"))
+
+## Crop and mask with AOI
+#VAR_PN[] <- 1:length(VAR_PN)
+VAR_PN <- crop (VAR_PN, extent(PN_shp))
+VAR_PN <- mask(VAR_PN, PN_shp)
+
+## Check that it worked
+plot(VAR_PN)
+plot(PN_shp, add=TRUE, lwd=2)
+
+
+```
+
+
+Descriptive statistics of the variables
+```{r}
+summary(VAR_PN)
+```
+
+```{r}
+VAR_PN <- stack(VAR_PN)
+names(VAR_PN)
+```
+
+```{r}
+summary(VAR_PN)
+```
+
+Exploring the structure of variables
+```{r}
+print(VAR_PN)
+```
+
+
+```{r}
+# Assign coordinate system, if necessary
+#crs(VAR_PN) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+```
+
+
+
+Since multicollinearity would cause uncertainties in the model coefficients, a method generally used to detect multicollinearity is the **variance inflation factor (VIF)**, which measures the degree of correlation between the predictors of the model. An established rule is that if the FIV between 2 predictors approaches a value of 1 it would indicate no correlation, values between 1 and 5 a moderate correlation, and greater than 5 a severe correlation.
+
+We now calculate VIF based on the functions vifcor or vifstep
+
+```{r}
+v1 <- vifcor(VAR_PN, th=0.8) # Search for a pair of variables that have the maximum linear correlation (greater than th) and exclude one of them that has greater VIF. The procedure is repeated until there is no variable with a high correlation coefficient (greater than the threshold) with other variables.
+v1
+```
+
+
+
+```{r}
+v2 <- vifstep(VAR_PN, th=3) # Calculate the VIF for all variables, exclude one with the highest VIF (greater than the threshold), repeat the procedure until there are no variables left with VIF greater than th.
+v2
+```
+
+
+```{r}
+re1 <- exclude(VAR_PN,v1)
+re1
+
+plot(re1)
+```
+
+
+
+```{r}
+re2 <- exclude(VAR_PN,v2)
+re2
+
+plot(re2)
+```
+
+
+Even if the variables with less collinearity are selected, they could really be correlated, since the VIF does not test well the correlations between pairs of variables
+
+Let's calculate VIF "by hand"
+
+
+```{r}
+### Transform the rasters into a table
+var.df<-as.data.frame(VAR_PN)
+
+### Remove null values
+var.df<-na.omit(var.df)
+
+### Calculate the Spearman correlation coefficient between variables
+#memory.limit() #if necessary
+var.cor<-cor(var.df, method = c("spearman"))
+```
+
+
+
+Exploring the correlation results
+```{r}
+print(var.cor)
+```
+
+Correlation plot
+
+```{r}
+library(corrplot) # Graphical display of a correlation matrix, confidence interval
+corrplot_number<-corrplot(var.cor, method = "number")
+```
+
+
+```{r}
+corrplot_circle<-corrplot(var.cor, type = "upper", method = "circle") # More intuitive
+```
+
+
+We now transform correlations into a dataframe and Explore the structure of it,
+
+```{r}
+
+cor.df<-as.data.frame(var.cor)
+
+head(cor.df)
+```
+
+We export the dataframe (only the upper diagonal)
+
+```{r}
+lower<-var.cor
+lower[lower.tri(var.cor, diag=TRUE)]<-""
+lower.df<-as.data.frame(lower)
+lower.df
+
+write.csv(lower.df, paste(path2work1, "var_correlations.csv"),sep=",")
+```
+
+Transform the correlation matrix into a distance matrix. This test is equivalent to a correlation test but the ramp of values change. 
+
+```{r}
+var.dist <- abs(as.dist(cor.df))
+```
+
+
+
+Calculate the dendrogram based on distances (less distance = more correlation)
+
+```{r}
+var.cluster <- hclust(1-var.dist)
+```
+
+
+
+Plot of the dendrogram. What we see is the correlation distance, inverse to the correlation coefficient. 
+
+```{r}
+plot(var.cluster)
+```
+
+
+
+Select variables with a correlation < 0.8
+
+```{r}
+plot(var.cluster)
+abline(h=0.2, lty=2, lwd=2, col="red")
+```
+
+
+We explore the plot and select uncorrelated variables.
+
+```{r}
+var.selected <- c("NDWI_DS","NDWI_WS")
+```
+
+
+We build a new table with the selected variables
+
+```{r}
+var.df2<-var.df[ , var.selected]
+
+var.cor<-cor(var.df2, method = c("spearman"))
+corrplot_number<-corrplot(var.cor, type = "upper", method = "number")
+
+```
+
+```{r}
+corrplot_circle<-corrplot(var.cor, type = "upper", method = "circle")
+```
+
+
+Calculate the Variance Inflation Factor (VIF)
+
+```{r}
+result.vif<-vif(var.df2)
+result.vif
+```
+
+
+We eliminate those with the highest VIF value, as they are the most susceptible to be generating noise.
+
+```{r}
+# Remove xxX
+#var.df2$xxX<-NULL
+#result.vif<-vif(var.df2)
+#result.vif
+```
+
+
+
+Now we can say that the 2 remaining vars are the ones we are going to use to model.
+
+We represent a basic horizontal boxplot
+
+```{r}
+p <- ggplot(data=result.vif, aes(x=Variables, y=VIF), fill = activity) +
+  ggtitle("VIF") +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme(
+    plot.title = element_text(size=18, face="bold"),
+    axis.title=element_text(size=18, face="bold"),
+    legend.title=element_text(size=14, face="bold"),
+    legend.text=element_text(size=12),
+    axis.text=element_text(size=14, colour="black"))
+
+p
+```
+
+
+We get the names of the variables
+
+```{r}
+var.selected<-names(var.df2)
+var.selected
+```
+
+
+We join all the rasters in a single object
+
+```{r}
+var.def<-brick(VAR_PN[[var.selected]])
+```
+
+
+
+Variables plot
+
+```{r}
+plot(var.def)
+```
+
+
+We save the selected variables to calibrate our ENMs
+
+```{r}
+writeRaster(x=var.def, path2work2, names(var.def), bylayer=TRUE, format="ascii", overwrite=TRUE)
+```
+
+
+We remove some objects and gain RAM
+
+```{r}
+rm(var.cor, var.df, var.df2, result.vif, var.cluster, var.dist, var.selected)
+gc()
+```
+

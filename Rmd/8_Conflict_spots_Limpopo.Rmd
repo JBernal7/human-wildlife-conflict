@@ -1,0 +1,458 @@
+---
+title: "Conflict Maps (I)"
+author: "Jessica Bernal"
+date: "2022-08-14"
+output: html_document
+---
+
+### 6. Mapping Conflict zones. Preparing variables.
+
+```{r}
+#setwd if neccesary. Here we only check it, as it has been previously defined for the project
+getwd()
+```
+
+Loading the libraries to use,
+
+```{r}
+library(raster)
+library(rgdal)
+library(spatstat)
+library(spatialEco)
+library(usdm) # Uncertainty analysis for species distribution models
+library(ggplot2) # Powerful graphics language for creating elegant and complex plots
+```
+
+
+Loading the data and creating the paths to use.
+
+
+```{r}
+### Conflict species rasters path
+path2layers<-"./Proyecto/Conflict_species"
+
+### Results path 
+path2work1<-"./Proyecto/Results/"
+
+### Loading species rasters
+CONF_SP <- stack(list.files(path=path2layers,pattern='',full.names=TRUE))
+names(CONF_SP)
+```
+
+Load the variables of Population density, Land cover and Livestock separatedly
+
+```{r}
+### Population density
+VAR_pop <- raster("./Population_density/GHSL_JRC_P2020/GHS_POP_E2020_GLOBE_R2022A_54009_100_V1_0_R12_C22.tif")
+
+plot(VAR_pop)
+```
+```{r}
+### Land cover map
+VAR_land <- raster("./Land_cover/E020S20_PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif")
+
+plot(VAR_land)
+```
+```{r}
+### Livestock - buffalo
+VAR_ls_buffalo <- raster("./Livestock/buffaloes/5_Bf_2010_Da.tif")
+
+plot(VAR_ls_buffalo)
+```
+```{r}
+### Livestock - cattle
+VAR_ls_cattle <- raster("./Livestock/cattle/5_Ct_2010_Da.tif")
+
+plot(VAR_ls_cattle)
+```
+```{r}
+### Livestock - chickens
+VAR_ls_chicken <- raster("./Livestock/chickens/5_Ch_2010_Da.tif")
+
+plot(VAR_ls_chicken)
+```
+```{r}
+### Livestock - ducks
+VAR_ls_duck <- raster("./Livestock/ducks/5_Dk_2010_Da.tif")
+
+plot(VAR_ls_duck)
+```
+
+```{r}
+### Livestock - goats
+VAR_ls_goat <- raster("./Livestock/goats/5_Gt_2010_Da.tif")
+
+plot(VAR_ls_goat)
+```
+```{r}
+### Livestock - horses
+VAR_ls_horse <- raster("./Livestock/horses/5_Ho_2010_Da.tif")
+
+plot(VAR_ls_horse)
+```
+```{r}
+### Livestock - pigs
+VAR_ls_pig <- raster("./Livestock/pigs/5_Pg_2010_Da.tif")
+
+plot(VAR_ls_pig)
+```
+```{r}
+### Livestock - sheep
+VAR_ls_sheep <- raster("./Livestock/sheep/5_Sh_2010_Da.tif")
+
+plot(VAR_ls_sheep)
+```
+
+```{r}
+extent(CONF_SP)
+extent(VAR_pop)
+extent(VAR_land)
+extent(VAR_ls_buffalo)
+extent(VAR_ls_cattle)
+extent(VAR_ls_chicken)
+extent(VAR_ls_duck)
+extent(VAR_ls_goat)
+extent(VAR_ls_horse)
+extent(VAR_ls_pig)
+extent(VAR_ls_sheep)
+```
+
+```{r}
+xres(CONF_SP)
+xres(VAR_pop)
+xres(VAR_land)
+xres(VAR_ls_buffalo)
+xres(VAR_ls_cattle)
+xres(VAR_ls_chicken)
+xres(VAR_ls_duck)
+xres(VAR_ls_goat)
+xres(VAR_ls_horse)
+xres(VAR_ls_pig)
+xres(VAR_ls_sheep)
+```
+```{r}
+crs(CONF_SP)
+crs(VAR_pop)
+crs(VAR_land)
+crs(VAR_ls_buffalo)
+crs(VAR_ls_cattle)
+crs(VAR_ls_chicken)
+crs(VAR_ls_duck)
+crs(VAR_ls_goat)
+crs(VAR_ls_horse)
+crs(VAR_ls_pig)
+crs(VAR_ls_sheep)
+```
+```{r}
+# Transform CRS if necessary
+VAR_pop <- projectRaster(VAR_pop, crs = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+```
+```{r}
+memory.limit()
+```
+
+```{r}
+memory.limit(36000)
+```
+
+```{r}
+VAR_pop <- projectRaster(VAR_pop, crs = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+```
+
+
+```{r}
+
+# Assign coordinate system if necessary
+#crs(VAR_pop) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+"
+```
+
+```{r}
+crs(VAR_pop) 
+```
+
+Crop rasters with AOI
+
+```{r}
+### AOI path
+PN_shp <- readOGR("./PN_Limpopo/limites_limpopo/PN_Limpopo_30km.shp")
+
+### crs transform
+PN_shp <- spTransform(PN_shp, CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+```
+```{r}
+crs(PN_shp)
+```
+
+Crop and mask with AOI
+
+```{r}
+## Population density
+
+VAR_pop <- crop (VAR_pop, extent(PN_shp))
+VAR_pop <- mask(VAR_pop, PN_shp)
+
+## Check that it worked
+plot(VAR_pop)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+
+```{r}
+## Land cover
+
+VAR_land <- crop (VAR_land, extent(PN_shp))
+VAR_land <- mask(VAR_land, PN_shp)
+
+## Check that it worked
+plot(VAR_land)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+
+```{r}
+## Livestock buffaloes
+
+VAR_ls_buffalo <- crop (VAR_ls_buffalo, extent(PN_shp))
+VAR_ls_buffalo <- mask(VAR_ls_buffalo, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_buffalo)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+
+```{r}
+## Livestock catlle
+
+VAR_ls_cattle <- crop (VAR_ls_cattle, extent(PN_shp))
+VAR_ls_cattle <- mask(VAR_ls_cattle, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_cattle)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+```{r}
+## Livestock chicken
+
+VAR_ls_chicken <- crop (VAR_ls_chicken, extent(PN_shp))
+VAR_ls_chicken <- mask(VAR_ls_chicken, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_chicken)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+```{r}
+## Livestock duck
+
+VAR_ls_duck <- crop (VAR_ls_duck, extent(PN_shp))
+VAR_ls_duck <- mask(VAR_ls_duck, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_duck)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+```{r}
+## Livestock goat
+
+VAR_ls_goat <- crop (VAR_ls_goat, extent(PN_shp))
+VAR_ls_goat <- mask(VAR_ls_goat, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_goat)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+
+```{r}
+## Livestock horse
+
+VAR_ls_horse <- crop (VAR_ls_horse, extent(PN_shp))
+VAR_ls_horse <- mask(VAR_ls_horse, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_horse)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+
+```{r}
+## Livestock pig
+
+VAR_ls_pig <- crop (VAR_ls_pig, extent(PN_shp))
+VAR_ls_pig <- mask(VAR_ls_pig, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_pig)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+
+```{r}
+## Livestock sheep
+
+VAR_ls_sheep <- crop (VAR_ls_sheep, extent(PN_shp))
+VAR_ls_sheep <- mask(VAR_ls_sheep, PN_shp)
+
+## Check that it worked
+plot(VAR_ls_sheep)
+plot(PN_shp, add=TRUE, lwd=2)
+```
+
+
+
+
+
+We match extension and resolution of the variables
+
+```{r}
+dim(CONF_SP)
+dim(VAR_pop)
+dim(VAR_land)
+dim(VAR_ls_buffalo)
+dim(VAR_ls_cattle)
+dim(VAR_ls_chicken)
+dim(VAR_ls_duck)
+dim(VAR_ls_goat)
+dim(VAR_ls_horse)
+dim(VAR_ls_pig)
+dim(VAR_ls_sheep)
+```
+
+```{r}
+### Match rasters
+VAR_pop_new<-resample(VAR_pop,CONF_SP)
+dim(VAR_pop_new)<-c(275,230)
+plot(VAR_pop_new)
+```
+
+
+```{r}
+VAR_land_new<-resample(VAR_land,CONF_SP)
+dim(VAR_land_new)<-c(275,230)
+plot(VAR_land_new)
+```
+
+
+
+```{r}
+VAR_ls_bf_new<-resample(VAR_ls_buffalo,CONF_SP)
+dim(VAR_ls_bf_new)<-c(275,230)
+plot(VAR_ls_bf_new)
+```
+
+```{r}
+VAR_ls_ct_new<-resample(VAR_ls_cattle,CONF_SP)
+dim(VAR_ls_ct_new)<-c(275,230)
+plot(VAR_ls_ct_new)
+```
+
+```{r}
+VAR_ls_ch_new<-resample(VAR_ls_chicken,CONF_SP)
+dim(VAR_ls_ch_new)<-c(275,230)
+plot(VAR_ls_ch_new)
+```
+```{r}
+VAR_ls_dk_new<-resample(VAR_ls_duck,CONF_SP)
+dim(VAR_ls_dk_new)<-c(275,230)
+plot(VAR_ls_dk_new)
+```
+```{r}
+VAR_ls_gt_new<-resample(VAR_ls_goat,CONF_SP)
+dim(VAR_ls_gt_new)<-c(275,230)
+plot(VAR_ls_gt_new)
+```
+```{r}
+VAR_ls_ho_new<-resample(VAR_ls_horse,CONF_SP)
+dim(VAR_ls_ho_new)<-c(275,230)
+plot(VAR_ls_ho_new)
+```
+```{r}
+VAR_ls_pg_new<-resample(VAR_ls_pig,CONF_SP)
+dim(VAR_ls_pg_new)<-c(275,230)
+plot(VAR_ls_pg_new)
+```
+
+```{r}
+VAR_ls_sh_new<-resample(VAR_ls_sheep,CONF_SP)
+dim(VAR_ls_sh_new)<-c(275,230)
+plot(VAR_ls_sh_new)
+```
+
+
+
+
+```{r}
+
+extent(CONF_SP)
+extent(VAR_pop_new)
+extent(VAR_land_new)
+extent(VAR_ls_bf_new)
+extent(VAR_ls_ct_new)
+extent(VAR_ls_ch_new)
+extent(VAR_ls_dk_new)
+extent(VAR_ls_gt_new)
+extent(VAR_ls_ho_new)
+extent(VAR_ls_pg_new)
+extent(VAR_ls_sh_new)
+```
+
+```{r}
+xres(CONF_SP)
+xres(VAR_pop_new)
+xres(VAR_land_new)
+xres(VAR_ls_bf_new)
+xres(VAR_ls_ct_new)
+xres(VAR_ls_ch_new)
+xres(VAR_ls_dk_new)
+xres(VAR_ls_gt_new)
+xres(VAR_ls_pg_new)
+xres(VAR_ls_sh_new)
+```
+
+
+```{r}
+crs(CONF_SP)
+crs(VAR_pop_new)
+crs(VAR_land_new)
+crs(VAR_ls_bf_new)
+crs(VAR_ls_ct_new)
+crs(VAR_ls_ch_new)
+crs(VAR_ls_dk_new)
+crs(VAR_ls_gt_new)
+crs(VAR_ls_pg_new)
+crs(VAR_ls_sh_new)
+```
+
+
+```{r}
+(CONF_SP)
+(VAR_pop_new)
+(VAR_land_new)
+(VAR_ls_bf_new)
+(VAR_ls_ct_new)
+(VAR_ls_ch_new)
+(VAR_ls_dk_new)
+(VAR_ls_gt_new)
+(VAR_ls_pg_new)
+(VAR_ls_sh_new)
+```
+
+
+
+```{r}
+### Load variables
+VAR_PN <- stack(c(CONF_SP, VAR_pop_new, VAR_land_new, VAR_ls_bf_new, VAR_ls_ct_new, VAR_ls_ch_new, VAR_ls_dk_new, VAR_ls_gt_new, VAR_ls_pg_new, VAR_ls_sh_new))
+plot(VAR_PN)
+```
+```{r}
+names(VAR_PN)
+```
+```{r}
+names(VAR_PN) <- c('Ha_PresentEnsemble', 'La_PresentEnsemble', 'Sc_PresentEnsemble', 'Pop_Density_2020', 'Land_Cover_2019', 'Ls_Bf_2010', 'Ls_Ct_2010', 'Ls_Ch_2010', 'Ls_Dk_2010', 'Ls_Gt_2010', 'Ls_Pg_2010', 'Ls_Sh_2010')
+
+names(VAR_PN)
+```
+
+```{r}
+### Save variables
+writeRaster(x=VAR_PN, path2work1, names(VAR_PN), bylayer=TRUE, format="ascii", overwrite=TRUE)
+```
+
+We check the results in QGIS and proceed to normalization an reclassification of the variables
+
