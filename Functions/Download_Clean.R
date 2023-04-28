@@ -2,11 +2,6 @@
 # Function to download and clean presence data for any given species and country codes:
 
 
-library(rgbif)
-library(sp)
-library(rgeos)
-library(raster)
-
 download_presence_data <- function(species_name, country_codes, output_path) {
   presence_data <- data.frame()
   
@@ -32,9 +27,10 @@ download_presence_data <- function(species_name, country_codes, output_path) {
   return(presence_sp)
 }
 
-# Example usage:
-species_name <- "Loxodonta africana"
-country_codes <- c("MZ", "ZW", "ZA")
-output_path <- "./Loxodonta_africana/1_presencias/1_RGBIF"
 
-elephant_presence <- download_presence_data(species_name, country_codes, output_path)
+# Example usage (arguments):
+species_name <- "Loxodonta africana" #The scientific name of the species
+country_codes <- c("MZ", "ZW", "ZA") #A vector of two-letter ISO country codes 
+output_path <- "./Loxodonta_africana/1_presencias/1_RGBIF" #The directory where the output files (CSV and shapefile) will be saved
+
+elephant_presence <- download_presence_data(species_name, country_codes, output_path) #replace elephant by the target species
