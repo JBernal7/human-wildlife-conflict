@@ -9,7 +9,7 @@ This repository contains code and data for various projects related to human-wil
 
 - `Functions`: This folder contains separate R files for each custom function.
 
-The '1_4All.R' file is a script that demonstrates how to use some of the functions for a specific case. 
+The `1_4All.R` file is a script that demonstrates how to use some of the functions for a specific case. 
 The rest of this public repository is an ongoing project, and we welcome collaborators who are interested in contributing to this work or any related project.
 
 ## Limitations
