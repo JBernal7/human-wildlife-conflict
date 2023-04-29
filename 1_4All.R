@@ -12,7 +12,7 @@ download_presence_data <- function(species_name, country_codes, output_path) {
     temp_data <- occ_data(scientificName = species_name,
                           hasCoordinate = TRUE, country = country_code,
                           limit = 5000)
-    presence_data <- rbind(presence_data, temp_data$data[, c("decimalLongitude", "decimalLatitude")])
+    presence_data <- rbind(presence_data, temp_data$data[, c("datasetKey", "decimalLongitude", "decimalLatitude")])
   }
   
   presence_data <- na.omit(presence_data)
