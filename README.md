@@ -1,7 +1,7 @@
 
 # Human-Wildlife Conflict Projects
 
-This repository contains code and data for various projects related to human-wildlife conflict. The main goal of this repository is to share a portion of the code used in the projects, allowing users to review the work done, ask questions, and potentially improve the code or apply it to other related projects.
+This repository contains code and data for various projects related to human-wildlife conflict. The main goal of this repository is to share a most of the code used in the projects, allowing users to review the work done, ask questions, and potentially improve the code or apply it to other related projects.
 
 ## Repository Structure
 
